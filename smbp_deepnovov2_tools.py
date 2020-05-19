@@ -5,86 +5,107 @@ This module contains tools to annotate MGF spectra using Mascot XML results and
 create the features.csv file needed by DeepNovoV2.
 """
 
-import os
 import pandas as pd
 import pyteomics.mgf as mgf
 import re
-from typing import List, Iterable
+from typing import List
 import xml.etree.ElementTree as ET
 
 
-def extract_features(mgf_file: str):
+def extract_features(mgf_input: str, mascot_input: str = None) -> pd.DataFrame:
     """Extract features from an MGF file to create DeepNovoV2 features.csv.
 
+    If a Mascot XML results file is provided, sequences will be added to the
+    features and non-identified spectra will be discarded.
+
     Args:
-        mgf_file (str): path to the MGF file.
+        mgf_input (str): path to the MGF file.
+        mascot_input (str): path to the Mascot XML file.
 
     Returns:
         pandas.DataFrame: the features DataFrame.
 
     """
-    with mgf.read(mgf_file, read_charges=False) as reader:
+    # Extract mascot sequences if a mascot XML file was given.
+    if mascot_input:
+        mascot_seq = extract_mascot_sequences(mascot_input)
+
+    with mgf.read(mgf_input, read_charges=False) as reader:
         rows_list = list()
         for spectrum in reader:
+            # Retrieve spectrum parameters
             params = spectrum['params']
-            row = dict()
-            # spec_group_id and scans are identical since we're not merging
-            # spectra.
-            row.update({'spec_group_id':  params['scans'],
-                        'scans': params['scans']})
+            scans = params['scans']
 
             # In Mascot MGF files, the PEPMASS line contains the precursor m/z,
             # intensity and charge: only m/z is selected.
+            mz = (params['pepmass'][0] if len(params['pepmass']) > 1 else
+                  params['pepmass'])
             # Pyteomics returns charges as a list of integers with subtype
             # pyteomics.auxiliary.structures.Charge. The first charge is
             # selected and converted to integer.
-            row.update({'m/z': params['pepmass'][0],
-                        'z': int(params['charge'][0])})
+            charge = int(params['charge'][0])
 
-            row.update({'rt_mean': params['rtinseconds']})
-            row.update({'seq': 'NA'})
+            rt_mean = params['rtinseconds']
 
-            # profile and feature area are set to default values set by the
-            # authors.
-            row.update({'profile': '0.0:1.0', 'feature area': '1.0'})
+            # Get sequences for the current spectrum if a mascot XML file was
+            # given. If no XML file was provided, add an empty sequence.
+            if mascot_input:
+                sequences = mascot_seq.loc[
+                    mascot_seq.title == params['title'], 'sequence'
+                ].values
+            else:
+                sequences = ['']
 
-            rows_list.append(row)
+            # Add one feature per sequence found.
+            for seq in sequences:
+                # spec_group_id and scans are identical (DeepNovoV2 uses these
+                # columns in case of merged spectra).
+                # profile and feature area are set to default values set by the
+                # authors.
+                rows_list.append({
+                    'spec_group_id':  scans,
+                    'scans': scans,
+                    'm/z': mz,
+                    'z': charge,
+                    'rt_mean': rt_mean,
+                    'seq': seq,
+                    'profile': '0.0:1.0',
+                    'feature area': '1.0'
+                })
 
     # Return DataFrame of features.
-    return pd.DataFrame(rows_list)
+    return pd.DataFrame(rows_list).drop_duplicates()
 
 
-def annotate_mgf(mgf_file: str, mascot_xml: str):
+def annotate_mgf(mgf_input: str, mascot_input: str, mgf_output: str):
     """Annotate MGF file using Mascot XML results.
 
     annotate_mgf will annotate the MGF file using peptide sequences found in
-    the Mascot XML results and write the resulting MGF file, appending
-    '_annotated' to the original filename.
+    the Mascot XML results and write the resulting MGF file to mgf_output.
 
     Args:
-        mgf_file (str): path to the MGF file.
-        mascot_xml (str): path to the Mascot XML results.
+        mgf_input (str): path to the MGF input file.
+        mascot_intput (str): path to the Mascot XML results.
+        mgf_output (str): path to the MGF output file.
 
     """
-    def annotated_mgf_iter(mgf_reader: Iterable, mascot_xml: str):
-        """Annotated MGF generator."""
-        mascot_seq = extract_mascot_sequences(mascot_xml)
-        for spectrum in mgf_reader:
+    # Retrieve mascot sequences.
+    mascot_seq = extract_mascot_sequences(mascot_input)
+
+    with mgf.read(mgf_input, read_charges=False) as reader:
+        for spectrum in reader:
             sequences = mascot_seq.loc[
                 mascot_seq.title == spectrum['params']['title'], 'sequence'
             ].values
+            # If multiple sequences are associated to a single spectrum, the
+            # latter will be duplicated for each sequence.
             for seq in sequences:
                 spectrum['params']['seq'] = seq
-                yield spectrum
-
-    # Output MGF filename.
-    output_mgf = '{0}_{2}{1}'.format(*os.path.splitext(mgf_file) +
-                                     ('annotated',))
-    with mgf.read(mgf_file, read_charges=False) as reader:
-        mgf.write(annotated_mgf_iter(reader, mascot_xml), output_mgf)
+                mgf.write((spectrum,), mgf_output)
 
 
-def merge_mgf(input_file_list: List[str], output_file: str):
+def merge_mgf(input_files: List[str], output_file: str):
     """Merge a list of MGF files, re-numbering the scan IDs.
 
     Args:
@@ -93,12 +114,12 @@ def merge_mgf(input_file_list: List[str], output_file: str):
 
     """
     with open(output_file, mode="w") as output_handle:
-        for index, input_file in enumerate(input_file_list):
-            print("input_file = ", os.path.join(input_file))
+        for index, input_file in enumerate(input_files):
             with open(input_file, mode="r") as input_handle:
                 line = input_handle.readline()
                 while line:
-                    # If the current line is a scan ID, renumber it.
+                    # If the current line is a scan ID, renumber it. Otherwise,
+                    # write the line as is.
                     if "SCANS=" in line:
                         scan = re.split('=|\n', line)[1]
                         output_handle.write("SCANS=F{0}:{1}\n"
@@ -167,7 +188,8 @@ def format_mgf_deepnovo(mgf_input: str, mgf_output: str):
     """Format MGF file for use with DeepNovoV2.
 
     Necessary spectrum parameters will be reordered to comply with DeepNovoV2
-    convention. Other parameters will be discarded.
+    convention. Other parameters will be discarded. Empty spectra will be
+    discarded.
 
     Args:
         mgf_input (str): path to the input MGF file.
@@ -177,10 +199,12 @@ def format_mgf_deepnovo(mgf_input: str, mgf_output: str):
     key_order = ['title', 'pepmass', 'charge', 'scans', 'rtinseconds']
     with mgf.read(mgf_input, read_charges=False) as reader:
         for spectrum in reader:
-            # Remove unnecessary parameters.
-            to_remove = [c for c in spectrum['params'].keys() if c not in
-                         key_order]
-            for c in to_remove:
-                spectrum['params'].pop(c)
-            # Append current spectrum to MGF output with correct params order.
-            mgf.write((spectrum,), mgf_output, key_order=key_order)
+            # Check if spectrum isn't emtpy.
+            if spectrum['m/z array'].size:
+                # Remove unnecessary parameters.
+                to_remove = [c for c in spectrum['params'].keys() if c not in
+                             key_order]
+                for c in to_remove:
+                    spectrum['params'].pop(c)
+                # Append current spectrum to MGF output with correct params order.
+                mgf.write((spectrum,), mgf_output, key_order=key_order)

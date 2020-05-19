@@ -1,4 +1,6 @@
-mgf_SimonChardin_ADB/
+smbp_data/
+*.mgf
 notes/
 .DS_Store
+__pycache__
 
