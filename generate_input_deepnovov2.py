@@ -32,7 +32,9 @@ for mgf_file in mgf_files:
     print('Extracted features: {}\n'.format(features_file))
 
 # Merge MGF and features files.
-mgf_formatted_files = glob.glob('smbp_data/*_formatted.mgf')
-features_files = glob.glob('smbp_data/*_features.csv')
+mgf_formatted_files = sorted(glob.glob('smbp_data/*_formatted.mgf'))
+features_files = sorted(glob.glob('smbp_data/*_features.csv'))
 sdt.merge_mgf(mgf_formatted_files, 'spectrum_smbp.mgf')
 sdt.merge_features(features_files, 'features_smbp.csv')
+
+sdt.partition_feature_file_nodup('features_smbp.csv', prob=[0.8, 0.1, 0.1])

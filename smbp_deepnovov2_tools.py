@@ -109,6 +109,9 @@ def annotate_mgf(mgf_input: str, mascot_input: str, mgf_output: str):
 def merge_mgf(input_files: List[str], output_file: str):
     """Merge a list of MGF files, re-numbering the scan IDs.
 
+    The renumbering of the scan IDs will follow the order of the input files.
+    This list should have the same order as the list given to merge_features.
+
     Args:
         input_files (List[str]): a list of paths to MGF files.
         output_file (str): path to the merged MGF file.
@@ -132,6 +135,9 @@ def merge_mgf(input_files: List[str], output_file: str):
 
 def merge_features(input_files: List[str], output_file: str):
     """Merge a list of feature files, re-numbering the scan IDs.
+
+    The renumbering of the scan IDs will follow the order of the input files.
+    This list should have the same order as the list given to merge_mgf.
 
     Args:
         input_files (List[str]): a list of paths to features files.
