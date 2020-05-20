@@ -109,7 +109,7 @@ def merge_mgf(input_files: List[str], output_file: str):
     """Merge a list of MGF files, re-numbering the scan IDs.
 
     Args:
-        input_file_list (list): a list of paths to MGF files.
+        input_files (list): a list of paths to MGF files.
         output_file (str): path to the merged MGF file.
 
     """
@@ -127,6 +127,26 @@ def merge_mgf(input_files: List[str], output_file: str):
                     else:
                         output_handle.write(line)
                     line = input_handle.readline()
+
+
+def merge_features(input_files: List[str], output_file: str):
+    """Merge a list of feature files, re-numbering the scan IDs.
+
+    Args:
+        input_files (list): a list of paths to features files.
+        output_file (str): path to the merged MGF file.
+
+    """
+    features_list = list()
+    for index, f in enumerate(input_files):
+        features = pd.read_csv(f)
+        # Renumber the spectrum group and scan IDs.
+        features.spec_group_id = ('F' + str(index) + ':' +
+                                  features.spec_group_id.astype(str))
+        features.scans = ('F' + str(index) + ':' +
+                          features.scans.astype(str))
+        features_list.append(features)
+    pd.concat(features_list).to_csv(output_file, index=False)
 
 
 def extract_mascot_sequences(mascot_xml: str):
@@ -204,7 +224,8 @@ def format_mgf_deepnovo(mgf_input: str, mgf_output: str):
                 # Remove unnecessary parameters.
                 to_remove = [c for c in spectrum['params'].keys() if c not in
                              key_order]
-                for c in to_remove:
-                    spectrum['params'].pop(c)
-                # Append current spectrum to MGF output with correct params order.
+                for col in to_remove:
+                    spectrum['params'].pop(col)
+                # Append current spectrum to MGF output with correct params
+                # order.
                 mgf.write((spectrum,), mgf_output, key_order=key_order)
