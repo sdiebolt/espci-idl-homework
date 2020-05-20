@@ -5,6 +5,7 @@ This module contains tools to annotate MGF spectra using Mascot XML results and
 create the features.csv file needed by DeepNovoV2.
 """
 
+import numpy as np
 import pandas as pd
 import pyteomics.mgf as mgf
 import re
@@ -109,7 +110,7 @@ def merge_mgf(input_files: List[str], output_file: str):
     """Merge a list of MGF files, re-numbering the scan IDs.
 
     Args:
-        input_files (list): a list of paths to MGF files.
+        input_files (List[str]): a list of paths to MGF files.
         output_file (str): path to the merged MGF file.
 
     """
@@ -133,7 +134,7 @@ def merge_features(input_files: List[str], output_file: str):
     """Merge a list of feature files, re-numbering the scan IDs.
 
     Args:
-        input_files (list): a list of paths to features files.
+        input_files (List[str]): a list of paths to features files.
         output_file (str): path to the merged MGF file.
 
     """
@@ -229,3 +230,37 @@ def format_mgf_deepnovo(mgf_input: str, mgf_output: str):
                 # Append current spectrum to MGF output with correct params
                 # order.
                 mgf.write((spectrum,), mgf_output, key_order=key_order)
+
+
+def partition_feature_file_nodup(features_input: str, prob: List[float]):
+    """Partition a features file into training, validation and testing sets.
+
+    The function ensures that the training, validation and testing sets do not
+    share common peptides. The resulting files will use the same filename,
+    appending .train, .valid and .test.
+
+    Args:
+        - features_input (str): path to the features.csv file.
+        - prob (List[float]): list of probabilities associated with each set,
+              in order: training, validation, testing.
+
+    """
+    features_train_output = features_input + '.train'
+    features_valid_output = features_input + '.valid'
+    features_test_output = features_input + '.test'
+
+    features = pd.read_csv(features_input)
+
+    # Get unique sequences.
+    sequences = features.seq.unique()
+    set_num = np.random.choice(a=3, size=len(sequences), p=prob)
+
+    # Split features into training, validation and testing sets.
+    features_train = features.loc[features.seq.isin(sequences[set_num == 0])]
+    features_valid = features.loc[features.seq.isin(sequences[set_num == 1])]
+    features_test = features.loc[features.seq.isin(sequences[set_num == 2])]
+
+    # Write features.
+    features_train.to_csv(features_train_output, index=False)
+    features_valid.to_csv(features_valid_output, index=False)
+    features_test.to_csv(features_test_output, index=False)
