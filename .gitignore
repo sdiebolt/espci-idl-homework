@@ -1,5 +1,6 @@
 smbp_data/
 *.mgf
+*.csv
 notes/
 .DS_Store
 __pycache__
