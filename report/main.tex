@@ -1,0 +1,333 @@
+\documentclass[11pt]{article}
+
+% Document encoding
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+
+% Fonts
+\renewcommand\familydefault{\sfdefault}
+\usepackage{tgheros}
+\usepackage[defaultmono]{droidmono}
+\usepackage{sourcecodepro}
+
+% Quick way to get abbreviations for second, third, etc.
+\usepackage[super]{nth}
+
+% Better font size
+\usepackage{microtype}
+
+% Context sensitive quotation facilities
+\usepackage{csquotes}
+
+% Code listings
+\usepackage{solarized-light}
+\lstset{%
+  basicstyle = \ttfamily\footnotesize, 
+  numbers    = left, 
+  language   = python,
+  aboveskip  = 20pt,
+  belowskip  = 20pt
+}
+
+% Graphics, colors, and URLs
+\usepackage{graphicx}
+\usepackage{tikz}
+\PassOptionsToPackage{hyphens}{url}\usepackage{hyperref}
+\usepackage{xcolor-solarized}
+\hypersetup{%
+  linkcolor  = solarized-blue,
+  citecolor  = solarized-blue,
+  urlcolor   = solarized-blue,
+  colorlinks = true
+}
+\renewcommand{\UrlFont}{\normalsize}
+
+% Glossaries, acronyms
+\usepackage[automake, acronym]{glossaries}
+\makeglossaries
+\setacronymstyle{long-short}
+
+% Modify acronyms color (otherwise fixed by hyperref).
+\renewcommand*{\glstextformat}[1]{\textcolor{black}{#1}}
+
+% Maths
+\usepackage{amsmath,amssymb,amsthm,textcomp}
+\usepackage{enumerate}
+\usepackage{multicol}
+\usepackage[nottoc]{tocbibind}
+\usepackage[left=25mm,right=25mm,bindingoffset=0mm,top=20mm,bottom=20mm]{geometry}
+
+% Title
+\linespread{1.3}
+\newcommand{\linia}{\rule{\linewidth}{0.5pt}}
+\makeatletter
+\renewcommand{\maketitle}{
+\begin{center}
+\vspace{2ex}
+{\huge \textsc{\@title}}
+\vspace{1ex}
+\\
+\linia\\
+\@author \hfill \@date
+\vspace{4ex}
+\end{center}
+}
+\makeatother
+
+% Footers and headers
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\lhead{}
+\chead{}
+\rhead{}
+\lfoot{Introduction to Deep Learning - Final Report}
+\cfoot{}
+\rfoot{Page \thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\usepackage{fancyvrb}
+\usepackage{xcolor}
+%%%----------%%%----------%%%----------%%%----------%%%
+
+% Acronyms
+\newacronym{ms}{MS}{mass spectrometry}
+\newacronym{ms2}{MS/MS}{tandem mass spectrometry}
+\newacronym{rnn}{RNN}{recurrent neural network}
+\newacronym{cnn}{CNN}{convolutional neural network}
+\newacronym{lstm}{LSTM}{long short-term memory}
+\newacronym{tnet}{T-Net}{transformation network}
+\newacronym{ptm}{PTM}{post-translational modification}
+\newacronym{smbp}{SMBP}{Spectrométrie de Masse Biologique et Protéomique}
+\newacronym{esi}{ESI}{electrospray ionization}
+\newacronym{maldi}{MALDI}{matrix-assisted laser desorption/ionization}
+\newacronym{cid}{CID}{collision-induced dissociation}
+\newacronym{etd}{ETD}{Electron-Transfer Dissociation}
+\newacronym{mgf}{MGF}{mascot generic format}
+\newacronym{csv}{CSV}{comma-separated values}
+\newacronym{tsv}{TSV}{tab-separated values}
+\newacronym{xml}{XML}{extensible markup language}
+\newacronym{snp}{SNP}{single-nucleotide polymorphism}
+
+\begin{document}
+
+\title{%
+    IDL Module - Final Report\\
+    \vspace{1em}
+    DeepNovoV2, Better \textit{De Novo} Peptide Sequencing By Deep Learning
+}
+
+\author{Simon Chardin \& Samuel Diebolt, \nth{136} Graduating Class, ESPCI Paris-PSL}
+
+\date{May 18, 2020}
+
+\maketitle
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Introduction %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Introduction}
+
+\Gls{ms} for proteomics has become a well-known and widely used technique for protein identification, with applications in a wide variety of fields, including drug development, biochemical screening and toxicology. \Gls{ms} relies on the understanding of peptide fragmentation behaviors. In bottom-up proteomics, proteins in the samples of interest are digested by an enzyme into smaller, easier to handle peptides. These peptides are then separated using chromatography and analyzed by \gls{ms2}. Finally, \textit{de novo} methods utilize computational approaches to deduce the sequence of these peptides directly from the experimental \gls{ms2} spectra. These methods enable identification and quantification of the proteins in the original sample, but require solving complex combinatorial problems. Recently, a study proposed a deep learning model, DeepNovo, designed to perform \textit{de novo} sequencing from \gls{ms2} data~\cite{tran_novo_2017}. On 16 low- and high-resolution \gls{ms2} datasets, the tool outperformed current state of the art \textit{de novo} peptide sequencing software such as PEAKS~\cite{b_peaks_2003}, PepNovo~\cite{a_pepnovo_2005} and Novor~\cite{b_novor_2015}. In this report, we studied an improved version of this model, DeepNovoV2, currently described in a preprint by the same authors~\cite{qiao_deepnovov2_2019}. Given the lack of documentation in the original source code, we dismantled DeepNovoV2 into its main components and reconstructed it into a Python notebook, so as to provide better understanding of the model structure. The tool was then improved to handle more \glspl{ptm} and to parse \gls{ms2} data annotated using software other than PEAKS. Finally, we developed a Python module for the \textit{\gls{smbp}} laboratory at ESPCI Paris-PSL to facilitate input files generation, features extraction and spectra annotations. Using this tool, we trained the model on \gls{ms2} data from the \gls{smbp} laboratory and compared the results with those from DeepNovoV2's authors.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Background %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Background}
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Liquid Chromatography-Mass Spectrometry %%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Mass Spectrometry for Proteomics}
+
+\gls{ms} is a technique that measures the mass-to-charge ratio ($m/z$) of gas-phase ions. A mass spectrometer consists of three main modules: an ion source converting molecules in the sample of interest into gas-phase ions, a mass analyzer separating these ions according to their $m/z$ ratio and a detector measuring the ion counts for each $m/z$ value. Numerous technology advances in each module have made \gls{ms} a fundamental technique of proteomics. Ionization techniques such as \gls{esi}~\cite{fenn_electrospray_1989} and \gls{maldi}~\cite{karas_laser_1988} enable the ionization of proteins and peptides and are regularly coupled with quadrupole, ion-trap, time-of-flight or Fourier-transform ion cyclotron resonance mass analyzers.
+
+\textit{De novo} peptide sequencing is performed using spectra obtained with \gls{ms2}, a technique where two mass analyzers are coupled with an additional fragmentation step to enhance the analysis of the peptides and proteins. Figure~\ref{fig:ms2} shows a diagram of a typical \gls{ms2} workflow. After an eventual sample preprocessing step---e.g.\ protein digestion---, the molecules of interest are ionized and introduced in the first mass analyzer, resulting in a first \gls{ms} spectrum. Precursors ions corresponding to a given $m/z$ ratio are then selected by the first mass analyzer and further fragmented. \Gls{cid}~\cite{shukla_tandem_2000} is the most widely used \gls{ms2} technique: the gas-phase ions are heated by collisions with rare gas atoms, leading to fragmentation of the peptide backbone. These new ion fragments are introduced in the second mass analyzer, resulting in the \gls{ms2} spectrum. \Gls{ms2} has become a key technique for peptide sequencing, as it made possible the identification of ions with similar $m/z$ ratios that couldn't be differentiated using a single mass analyzer.
+
+ \begin{figure}[hbt!]
+    \centering
+    \includegraphics[width=\linewidth]{figures/DeepNovoV2_fig1.jpg}
+    \caption{Diagram of a typical \gls{ms2} workflow~\cite{qiao_deepnovov2_2019}.}%
+    \label{fig:ms2}
+ \end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% Database Searching - Current Methods %%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Database Searching - Current Methods}
+
+Currently, the most common method for peptide sequencing from \gls{ms2} data involves searching against databases of experimental or theoretical sources (e.g.\ Uniprot~\cite{noauthor_uniprot:_2015}, GenBank~\cite{benson_genbank_2013}, etc.). \gls{ms2} spectra can either be directly compared to experimental spectral libraries, or they can be used in search engines that will match them with candidate peptides obtained by \textit{in silico} fragmentation and spectrum analysis. Widely used search engines include Mascot~\cite{perkins_probability-based_1999}, SEQUEST~\cite{eng_approach_1994} and OMSSA~\cite{geer_open_2004}.
+
+However, database searching for peptide sequencing has some limitations. The aforementioned databases can be incomplete, due for example to the lack of information on some biological species. Moreover, modifications to the protein sequences due to \glspl{snp} or \glspl{ptm} result in huge combinatorial problems that can hinder search engines performances. Finally, search engines are limited to using the species-specific databases and \glspl{ptm} parameters selected by the user. This requires prior information on the samples and prevents identification of proteins and peptides not represented by the selected parameters.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% De Novo Peptide Sequencing %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{\textit{De Novo} Peptide Sequencing}
+
+A popular definition for ``\textit{de novo} peptide sequencing'' is, peptide sequencing performed without prior knowledge of the amino acid sequence. Using \gls{ms2}, this challenge similar to the image captioning problem in computer vision, allows the recovery of the exact amino acid sequence of the original peptide. Knowing the amino acid sequence of peptides from a protein digest is essential for study the biological function of the protein. De novo sequencing is an assignment of fragment ions from a mass spectrum. By integrating two fundamental types of neural networks, a \gls{cnn}, and a \gls{lstm}, Qiao et al. \cite{qiao_deepnovov2_2019} try to exploit image recognition and natural language processing. They use the CNN to analyze the content of a spectrum as an image, and then with the \gls{lstm}, it allows for an interpretation of the image.
+The most widely used fragmentation methods today are \gls{cid} and \gls{etd}. \gls{cid} produces mostly b and y-ions; and \gls{etd} produces mostly c and z-ions.
+
+ \begin{figure}[hbt!]
+    \centering
+    \includegraphics[width=1\linewidth]{figures/DeepNovoV2_fig2.png}
+    \caption{In a \gls{cid} \gls{ms}, many copies of the same peptide are fragmented at the peptide backbone to form b and y ions. The spectrum consists of peaks at the m/z (mass to charge) values of the corresponding fragment ions. A good quality spectrum often contains many (but not necessarily all) of the theoretical fragment ions. \cite{ma2012novo}}
+    \label{fig2}
+ \end{figure}
+
+\subsection{DeepNovoV2 Input Files}\label{ss:inputfiles}
+
+In DeepNovoV2, input \gls{ms2} spectra are represented as a set of $(m/z, \text{intensity})$ pairs, keeping only the top 500 most intense peaks in each spectrum by default. Spectra must be provided as \gls{mgf} files~\cite{mascot_mgf}, a plain-text format containing metadata on each spectrum---e.g.\ title, precursor ion $m/z$ ratio and charge, chromatography retention time, peptide sequence, etc.---along with a centroid representation of the spectrum itself, i.e.\ $(m/z, \text{intensity})$ pairs where the intensity represents the area of the original profile peak.
+
+Along with the \gls{mgf} spectrum file, DeepNovoV2 requires a \gls{csv} file containing information on each spectrum. In particular, the predicted peptide sequence obtained using other \textit{de novo} software, when available, is stored in the features file.
+
+The authors provided functions to convert and merge input files from the first DeepNovo model to DeepNovoV2 on a GitHub repository~\cite{deepnovov2_repo}. However, these functions lack documentation and aren't reliable with MGF annotated with software other than PEAKS. As the \gls{ms2} data offered by the \gls{smbp} laboratory came with annotation results obtained using the Mascot software~\cite{perkins_probability-based_1999}, we developed a Python module that offers functions for DeepNovoV2 input files generation using software-independent \gls{mgf} files and Mascot \gls{xml} result files. The Python module along with an explanatory Jupyter notebook are available on our GitHub repository: \url{https://github.com/sdiebolt/espci-idl-homework}.
+
+Finally, the model is configured using the \lstinline{deepnovo_config.py} file. This file contains the amino acids vocabulary and their respective masses, paths to the input files and the usual model parameters---e.g.\ batch size, initial learning rate, etc. The user must modify the \lstinline{vocab_reverse} and \lstinline{mass_AA} variables to add or remove their desired \glspl{ptm}. Note however than the unmodified cysteine isn't present in the vocabulary by default, and that there are errors in the modified cysteines mass shifts available in the source comments.
+
+\subsection{DeepNovoV2 Outputs}
+
+The outputs of DeepNovoV2 are \gls{tsv} files with predicted sequences and score, along with prediction accuracy for the testing step. Precision and recall at the peptide and amino acid levels are also printed during testing, but aren't saved by the software. The scores provided by DeepNovoV2 correspond to the output of the beam search (see Section~\ref{ss:beamsearch}), that is a $\mathrm{LogSoftMax}$ function applied to the last layer of the model. Therefore, scores range from 0 for a perfect prediction to $-\infty$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Methods %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Methods}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Data Preprocessing %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Data Preprocessing}
+
+As explained in Section~\ref{ss:inputfiles}, two files are needed to use DeepNovo: a spectrum \gls{mgf} file and a features \gls{csv} file. The spectrum file is provided by the mass spectrometer. \gls{ms} vendors either offer a direct export to \gls{mgf} or software to convert from a proprietary format---e.g.\ ThermoFisher's RAW format---to \gls{mgf}. The available parameters and their order for each spectrum in the \gls{mgf} file can vary: this can cause errors in DeepNovoV2, as the \lstinline{data_reader.py} script expects a specific set of ordered parameters. The function \lstinline{format_mgf_deepnovo}, available on our GitHub repository, will take any \gls{mgf} file containing at least the parameters required by DeepNovoV2---i.e.\ \lstinline{'TITLE'}, \lstinline{'PEPMASS'}, \lstinline{'CHARGE'}, \lstinline{'SCANS'}, \lstinline{'RTINSECONDS'}---and will reformat it to comply with DeepNovoV2's parser.
+
+The features file, containing information on each spectrum, must be created by the user. We provide the function \lstinline{extract_features} in our Python module to generate the features file from a formatted \gls{mgf} spectrum file and an optional Mascot \gls{xml} result file. If the latter is provided, \lstinline{extract_features} will retrieve peptide sequences associated to each spectrum and populate the features file. In that case, any spectrum without an associated peptide sequence will be removed, as it won't be usable in the model training.
+
+Finally, the functions \lstinline{merge_mgf} and \lstinline{merge_features} are provided in our Python module to merge input files. These functions re-number the scan IDs by prepending a tag corresponding to the order of the files to merge. Therefore, the user must be careful to have the same file order in the \gls{mgf} list and in the features list. A Jupyter notebook is provided on our GitHub repository to facilitate the merging and generation of DeepNovoV2's input files.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Point Net %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Point Net – Use of Image recognition CNN}
+
+A spectrum is a set of (m/z, intensity) pairs, which means the order of peaks should be irrelevant. Thus, in this algorithm we suppose that the prediction has an order invariant property with respect to the first dimension of the feature file. 
+Following the footsteps of PointNet, the model of \textit{de novo} conserve the following rules:
+\begin{itemize}
+    \item Permutation Invariance: given the unstructured nature of the spectrums, the data processing has to be invariant to the different representations.
+    \item Transformation Invariance.
+    \item Point Interactions: the interaction between neighboring pairs carries useful information.
+\end{itemize}
+
+Introducing the \gls{tnet}~\cite{charles_pointnet:_2017}. This network is a transformation of the input into a canonical space to approximately align point clouds before any processing is done. It can be seen as a generalization of PCAs to higher dimensions. Tensor decompositions have broad-ranging uses, including the analysis of a wide variety of probabilistic latent-variable models. The T-Net is shown in Fig.\ref{fig3} and consists of a multilayer perceptron (MLP), a max pooling operator, and two fully connected layers. This network predicts an affine transformation to ensure that the semantic labelling of a point cloud is invariant with geometric transformations.
+ \begin{figure}[hbt!]
+    \centering
+    \includegraphics[width=1\linewidth]{figures/DeepNovoV2_fig3.jpg}
+    \caption{\textbf{T-Net} Module Organisation  \cite{qiao_deepnovov2_2019}}
+    \label{fig3}
+ \end{figure}
+ 
+ Thus, its predicted transformation matrix has a dimension of 64x64. This contributes to the difficulty of achieving optimization. To address this problem, a regularization term is added to the soft-max loss to constrain the 64x64 feature transformation matrix to be close to an orthogonal matrix~\cite{kossaifi_t-net:_2019}. Yet the imbalanced training set problem is more important in target detection tasks. Focal loss is very useful for training imbalanced datasets, especially for object detection tasks. Therefore, it has been applied instead of cross entropy loss when practicing the model in DeepNovoV2. 
+
+\subsection{LSTM for peptide recombination}
+
+The algorithm uses a LSTM module to capture the ``language model'' of peptides. The LSTM model coupled to the T-Net is designed to learn sequence patterns of amino acids of the peptide in association with the corresponding spectrum. If we consider the spectrum intensity vector as an image, and the peptide sequence as a caption, the two models allows for the encoding of the intensity vector and decode the amino acids.
+LSTMs are a special kind of RNN, capable of learning long-term dependencies. LSTM processes data passing on information as it propagates forward. The operations of the LSTM cell are used to allow the LSTM to keep or forget information. The core concept of LSTM’s are the cell state, and it’s various gates represented in Fig.\ref{fig4}. 
+
+ \begin{figure}[hbt!]
+    \centering
+    \includegraphics[width=0.7\linewidth]{figures/DeepNovoV2_fig4.png}
+    \caption{\textbf{LSTM Cell} and its operations~\cite{noauthor_understanding_nodate}}
+    \label{fig4}
+ \end{figure}
+
+ The cell state relative information all the way down the sequence chain. It serves as a "memory" for the network. The cell state hold the necessary information during the processing of the sequence. As a result, information from early time steps will find its way to later time steps, reducing the impact of short-term memory. As the cell state goes through the process, information get’s added or removed to the cell state via gates. The gates are different neural networks that decide which information is allowed on the cell state using sigmoid and tanh functions. The gates can learn what information is relevant to keep or forget during training. To sum up, the Forget Gate determines what is important to hold out of the previous phases. The input gate determines what information needs to be applied from the current stage. The output gate decides what the next hidden state is to be
+~\cite{phi_illustrated_2020}.
+For the LSTM model, we use embedding vectors of size 512 to represent each of 26 symbols, as words in a vocabulary. Thus, the input to the LSTM model at each iteration is a vector of size 512.
+The initialization of the model is done using a sinusoidal m/z positional embedding, following the equations: 
+\begin{align}
+\textup{PE}_{(loc,2k)} = sin(\frac{loc}{10000^{\frac{2k}{d_{lstm}}}}) \\
+\textup{PE}_{(loc,2k+1)} = cos(\frac{loc}{10000^{\frac{2k}{d_{lstm}}}})
+\end{align}
+
+\textit{loc} is the m/z location after discretization, and $d$ is the dimension of the LSTM module. As the differences observed between peaks contains useful information. The sinusoidal positional embedding was therefore used to initialize the hidden states of the LSTM module. Finally, the LSTM architecture is composed of one layer of 512 neuron units and dropout layers with probability 0.25 for input and output.
+
+\subsection{\textit{De Novo} prediction with multidimensional Knapsack Problem}\label{ss:beamsearch}
+
+Knapsack problems are well-studied combination optimization problems. In the context of a set of items, each with a weight and a value, the objective is to determine the number of each item to be included in the collection, so that the total weight is less than or equal to the limit and the total value is as large as possible. This takes its name from the dilemma posed by someone who is limited by a fixed-size knapsack and has to fill it with the most desirable objects. In our case, each predicted sequence is made up of a series of amino acids each with a projected likelihood. To solve this problem, Qiao et al. choose to use the binary (0–1) knapsack problem, where the decision-maker is allowed to select (1) or not to select (0) the object, in other words, the amino acids are not divisible \cite{mathews1896partition} \cite{blum_dynamic_2016}.
+
+The version built in the \textit{de novo} algorithm (called IonCNNDenovo) is not a CNN, but kept its name from the previous version of DeepNovo. The function uses the knapsack, to take values and weight arrays, number of items, and the capacity input as input. The matrix is set to the value "0," such that if no objects are chosen, no value is generated. The solution is produced in polynomial time and space complexity. But the Knapsack dynamic programming algorithm provides a definite solution. Of this reason, this principle is widely used to find an optimal solution to problems, such as those illustrated by peptides.~\cite{sawik_selection_2013}.
+
+ \begin{figure}[hbt!]
+    \centering
+    \includegraphics[width=1\linewidth]{figures/DeepNovoV2_fig5.png}
+    \caption{\textbf{Beam Search} with Beam Width=3~\cite{on_beam_nodate}}
+    \label{fig5}
+ \end{figure}
+
+Beam Search (BS) is a search tree algorithm that uses a constructive approach, as define by Ponte et al. \cite{ponte2012beam}, there is a decision on the insertion or not of a solution component at each tree level. Typically, BS crosses the search tree by adopting the breadth-first approach and uses the knowledge given by the upper and lower bounds to pick the best solutions for the next tree stage. The $\alpha$ parameter is the number of nodes at each stage of the tree scan, typically referred to as beam width or beam size. Selecting only the right $\alpha$ solutions ensures that BS conducts a limited search in the list. For this reason, the optimal solution can not be found in general. Nonetheless, good solution consistency has been documented in a variety of hard optimization problems ~\cite{kolechkina_multicriteria_2008}.
+
+In their algorithm, Qiao et al. \cite{qiao_deepnovov2_2019} use a “local” version of this dynamic programming, to simply filter amino acids not suitable for the suffix mass, without performing backtracking. This means that another algorithm can be implemented for better performance, but also that the algorithm learns better features that are not subject to be an issue for this problem-solving. The knapsack is generated if not present in the source of the algorithm. It is only dependent on the vocabulary set of the ions present in the data set used, and the masses. If these parameters do not change, the knapsack stays the same.
+
+\subsection{Data size and handling (Data Class)}\label{dataset}
+
+To train the algorithm it can be interesting to use all the data available (all the peptides produced by a human for example, or a mouse, which can be sequenced with \gls{ms2}) for example. This amount for a huge quantity of data. Thus, it is necessary that the entire data generation process does not become a bottleneck in the training procedure.
+In this deeplearning algorithm, using Python class Dataset, Qiao et al. are able to characterize the key features of the \lstinline{dataset} they want to generate. They use the properties of \lstinline{torch.utils.data.Dataset} in order to leverage functionalities such as multiprocessing.
+The dataset class is used to contain data systematically, but for the training loop, it is important to have the ability to slice and index the \lstinline{dataset}. PyTorch offers this functionality with the function \lstinline{DataLoader}, which act as a data feeder for an \lstinline{dataset} object. It is possible to shuffle the data, determine the batch size and the number of workers to load the data on a GPU, and all that in a parallel way~\cite{NEURIPS2019_9015}. During the training phase, data is generated in parallel by the CPU, which can then be fed to the GPU for neural network computations.
+
+The authors also use the utility function \lstinline{to_one_hot} that they programmed. It allows for the conversion of a list of values into a list of integers. The \lstinline{one_hot} vector is a row vector with the value of 1 at the index of the matrix encoded. This processing is used for the focal loss, to down-weights the loss assigned to well-classified examples.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Modifications to DeepNovoV2 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Modifications to DeepNovoV2}
+
+Not only does the DeepNovoV2 source code lacks comments and documentation, but some of its functions are also designed to handle very specific cases. In particular, the raw sequence parsers present in \lstinline{data_reader.py} and \lstinline{deepnovo_worker_test.py} are designed to parse a hardcoded set of \glspl{ptm}, with a format specific to the PEAKS software, that isn't modifiable by the user. Therefore, we provide a fork of the DeepNovoV2 repository, available at \url{https://github.com/sdiebolt/DeepNovoV2}, where we bypassed these parsers so that the set of allowed \glspl{ptm} matches the vocabulary defined in \lstinline{deepnovo_config.py}. This repository also contains the configuration needed to train the model on the data offered by the \gls{smbp} laboratory.
+
+Furthermore, we dismantled DeepNovoV2's source code and created a Jupyter notebook implementation that can be run in a Google Colab environment with moderately sized datasets. Thus, we took advantage of the virtual GPUs offered by the platform: training the model using the data offered by the \gls{smbp} laboratory takes a maximum of two hours using our notebook, whereas it took more than ten hours on a server running two 12 cores Intel Xeon CPUs and 16GB of RAM. 
+
+The notebook follows a linear structure, with comments in each part of the model. All global variables previously available in \lstinline{deepnovo_config.py} are declared at the beginning of the notebook. Finally, the Cython module available in \lstinline{deepnovo_cython_modules.pyx} has been converted to a simple Python module, since using Cython on Jupyter notebooks isn't always reliable. This impacts performance, but the model still runs in adequate times on Google Colab.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Training Parameters & Predictions %%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Training Parameters \& Predictions}
+
+DeepNovo V2 algorithm uses Adam Optimizer with an initial learning rate of $10^3$. This learning rate can be adjusted during training to converge towards the best validation loss. The \lstinline{adjust_learning_rate} function divides the learning rate after a selected number of training steps or epoch. The loss on the validation set is computed at a step frequency that can be set by the user. You can try different parameters depending on the size of your training data set. For small training data set, we tried computing the valid loss every 10 steps and thus divide the learning rate by $10$ if the validation loss has not achieved a new low in the most recent ten evaluations.
+
+The training of the algorithm can be saved and restarted. In fact, after each training, if it is satisfactory, the parameters of all the neural networks are saved in a path defined in the variables. Thus, launching a new training with saved parameters will load those previous parameters and adapt them, learning from the newly added dataset. This feature is very interesting, as Qiao et al. highlighted \cite{tran_novo_2017}, to use a model pre-trained on a huge dataset very diverse, then to train it again on a smaller more specific dataset, to give it a focused edge on those specificities. But the ability to retrain the model is dependant on the parameters of the training. If the initial training used 5 layers of LSTM, the new training has to have the same parameters (which can be not possible is the computer used for retraining is less powerful then the one used for training).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Results %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Results}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Outputs Interpretation %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Outputs Interpretation}
+
+To evaluate the performance of \textit{de novo} sequencing models, Qiao et al. \cite{qiao_deepnovov2_2019} built a testing algorithm. They define a predicted amino "matched" with a real amino acid if their mass difference is less than 0.1 Da and if the prefix masses before them are different by less than 0.5 Da. The precision is defined as the amino acid level recall, calculated with the ratio of the total number of matched amino acids over the total number of amino acids in real peptide sequences. Similarly, the peptide level recall denotes the fraction of real peptide sequences that are fully correctly predicted. During training, the perplexity is calculated by the average focal-loss error. Using the ideas of perplexity, the average perplexity is displayed at the validation step, higher values mean more error. It gives a good idea of the error that the training model does on data with which it was not trained on. 
+Qiao et al. also built a function inside the \lstinline{WorkerTest} module that allows for the use of a file produce by PEAK DB, to compare the \textit{de novo} sequence predicted by the model, with the ones that the software PEAK DB outputs. This function is in our case depricated, due to the fact that the predicted sequences will be compared to the output of MASCOT, initaly added to the feature file and initial spectrum. It should be taken into account that DeepNovoV2, will learn therefore either form the MASCOT method or the PEAK DB method, and thus we can assume it will take on their biases. That is why when trainning it is important to select reel reference data in order not to brough in biaises linked to the method of labeling.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Training Parameters & Predictions %%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Training with SMBP Data}
+
+The data offered by the \gls{smbp} laboratory consists of ten \gls{mgf} spectrum files and their respective Mascot \gls{xml} results. After features extraction using our Python module, we found that these spectra contained significantly less features than the dataset provided by DeepNovoV2's authors~\cite{qiao_deepnovov2_2019}---6,428 features after sequence annotation in the \gls{smbp} spectra, compared to 114,641 features in the authors' dataset. Moreover, the model couldn't be retrained since the \glspl{ptm} used in the Mascot search were different than the default set of DeepNovoV2. Fortunately, the size of this dataset proved to be sufficient, as we achieved satisfactory results in the testing step.
+
+After preprocessing the data using our Python module and splitting the data using a 80/10/10 ratio, the training was performed on a computer running a GTX 1080 with 8GB of VRAM and 16GB of RAM and took approximately 27 minutes. The vocabulary was adjusted with the desired \glspl{ptm} for the \gls{smbp} dataset and the batch size was reduced from 32 to 24 to prevent any memory issues. Other model parameters were left to their default values. Figure~\ref{fig:perplexity} shows the evolution of the training and validation perplexity across 10 epochs, with 169 steps per epoch.
+\begin{figure}[hbt!]
+    \centering
+    \includegraphics[width=1\linewidth]{figures/DeepNovoV2_fig6.pdf}
+    \caption{Evolution of the training and validation perplexity on \gls{smbp} data. The model used 169 steps per epoch and ran through 10 epochs.}
+    \label{fig:perplexity}
+\end{figure}
+ 
+The best model was obtained at epoch 0, step 119. This is a bit worrying, as this could mean that the training data contains a lot of redundant information. However, this phenomenon was also observed when training the model using DeepNovoV2's authors dataset, with an optimal model achieved at epoch 4 out of 20. To test if this didn't lead to extensive overfitting, the model should be tested further using spectra coming from different sources (keeping in mind that the \glspl{ptm} should be the same).
+
+At the amino acid level, the testing resulted in a precision of 77\% and a recall of 51\%. At the peptide level, the precision was 51\% and the recall was 35\%. These results are consistent with those from the authors, but should be interpreted with caution, as we couldn't verify the presence of overfitting, given the possible redundancy in the data.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Conclusion %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Conclusion}
+
+Qiao et al. proposed DeepNovoV2, a neural network-based \textit{de novo} peptide sequencing model, and they claimed to outperform the previous state-of-the-art model. We tried to implement it on data from the \gls{smbp}, and so it could be used by the laboratory in the long run. Unfortunately, due to a lack of comment, the algorithm was very hard to read and interpret. This took a very long time to analyze each piece, and understand each function. Using a notebook to layout all the code and be able to run it on a smaller dataset was very useful, but time-consuming. One of the biggest downfalls was the computing power necessity that this model asks. Even the server provided by the \gls{smbp} was not enough and we had to run it on an adequate GPU, or vGPU with Colab. Nonetheless, this experience allowed us to discover a lot of good practice in Pytorch and Deep-Learning in general. We experimented with a lot of different new nothing like the knapsack problem and beam search. But also the implementation of \gls{lstm} to tune an image recognition neural network with en MLP. But also, the initial data preprocessing, from the result of MASCOT to the input of the model. And the analysis of the prediction of the model.  As we saw in this experiment, training such a huge model is challenging and requires intensive attention to detail before each run. The results observed on the data from the SMBP are very encouraging, and the evolution of the focal-loss is coherent to a good training of the model.
+
+The application of this model is very wide and with a more furnished dataset to train on, we believe the model can be well adapted to the needs of the \gls{smbp}. Using the same vocabulary and same model parameters, they will be able to continue the training with new data that they generate each day.
+
+This work is very valuable to us and we would love to guide it and see it flourish. We want to thank the people of \gls{smbp} for their help and guidance in adapting this model. 
+\newpage
+
+\printglossary[type=\acronymtype]
+
+\newpage
+
+\bibliographystyle{ieeetr}
+\bibliography{main}
+
+\end{document}
