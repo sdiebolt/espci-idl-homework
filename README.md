@@ -12,5 +12,5 @@ Jupyter notebook demonstrates the use of the module.
 
 ## Authors
 
-- Simon Charin
+- Simon Chardin
 - Samuel Diebolt 
